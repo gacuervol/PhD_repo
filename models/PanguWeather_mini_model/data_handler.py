@@ -140,7 +140,8 @@ def normalize_data(data):
         Normalized data tensor
     """
     # Define path to the statistics dictionary containing mean and SD values for air and surface variables:
-    statistics_path = "statistics.pt"
+    dir_path = "C:\\Users\\gcuervo\\OneDrive - Universidad de Las Palmas de Gran Canaria\\Documents\\Doctorado\\DB\\Pangu_data\\"
+    statistics_path = dir_path + "statistics.pt"
 
     # Load pre-computed statistics dictionary:
     statistics = torch.load(statistics_path)
@@ -165,13 +166,12 @@ class WeatherDataset(Dataset):
             surface_data_path (str):    Defines the path to data file containing the surface variables.
         """
         air_data = normalize_data(torch.load(air_data_path))
-        surface_data = normalize_data(torch.load(surface_data_path))
+        surface_data = normalize_data(torch.load(surface_data_path).squeeze()).squeeze()
         self.x_air = air_data[:-lead_time]
         self.x_surface = surface_data[:-lead_time]
         self.y_air = air_data[lead_time:]
         self.y_surface = surface_data[lead_time:]
         self.n_samples = self.x_air.shape[0]
-
         # Sanity checks:
         assert self.x_air.shape == self.y_air.shape, "air data shape does not match with its labels"
         assert self.x_surface.shape == self.y_surface.shape, "surface data shape does not match with its labels"
