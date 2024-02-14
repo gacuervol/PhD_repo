@@ -6,9 +6,12 @@ from timm.models.layers import DropPath, trunc_normal_
 
 def LoadConstantMask(batch_size):   # TODO: Replace dummy masks with actual data
     # Mask shape must equal (B, 1, H=1440, W=721) + padding
-    land_mask = torch.ones((batch_size, 1, 1440, 721))
-    soil_type = torch.ones((batch_size, 1, 1440, 721))
-    topography = torch.ones((batch_size, 1, 1440, 721))
+    # land_mask = torch.ones((batch_size, 1, 1440, 721))
+    land_mask = torch.ones((batch_size, 1, 64, 32))
+    # soil_type = torch.ones((batch_size, 1, 1440, 721))
+    soil_type = torch.ones((batch_size, 1, 64, 32))
+    #topography = torch.ones((batch_size, 1, 1440, 721))
+    topography = torch.ones((batch_size, 1, 64, 32))
     # Make sure the padding is the same as performed on "input_surface" in PatchEmbedding
     return F.pad(land_mask, (2,1)), F.pad(soil_type, (2,1)), F.pad(topography, (2,1))
 
@@ -21,17 +24,45 @@ class WeatherModel(nn.Module):
 
         # Patch embedding:
         self.input_layer = PatchEmbedding((2,4,4), C, batch_size)
-
+        # Resolucion UH
+        # kernel conv: 4 x 4 con saltos de 4
+        #              1440 / 4 = 360
+        #              721 / 4 = 181
         # Four main layers:
-        self.layer1 = EarthSpecificLayer(depth=depth[0], dim=C, input_resolution=(8, 360, 181),
+        # self.layer1 = EarthSpecificLayer(depth=depth[0], dim=C, input_resolution=(8, 360, 181),
+        #                                 heads=n_heads[0], drop_path_ratio_list=drop_path_list[:2], D=D)
+        # Resolucion UL
+        # kernel conv: 4 x 4 con saltos de 4
+        #              64 / 4 = 16
+        #              32 / 4 = 8
+        self.layer1 = EarthSpecificLayer(depth=depth[0], dim=C, input_resolution=(8, 16, 8),
                                         heads=n_heads[0], drop_path_ratio_list=drop_path_list[:2], D=D)
+        # Resolucion UH
+        # EarthBLock: 2
+        #              360 / 2 = 180
+        #              181 / 2 = 90.5
         #self.middleLayers = nn.Sequential(
-        self.layer2 = EarthSpecificLayer(depth=depth[1], dim=2*C, input_resolution=(8, 180, 91), heads=n_heads[1], drop_path_ratio_list=drop_path_list[2:], D=D)
-        self.layer3 = EarthSpecificLayer(depth=depth[2], dim=2*C, input_resolution=(8, 180, 91), heads=n_heads[2], drop_path_ratio_list=drop_path_list[2:], D=D)
+        # self.layer2 = EarthSpecificLayer(depth=depth[1], dim=2*C, input_resolution=(8, 180, 91), heads=n_heads[1], drop_path_ratio_list=drop_path_list[2:], D=D)
+        # self.layer3 = EarthSpecificLayer(depth=depth[2], dim=2*C, input_resolution=(8, 180, 91), heads=n_heads[2], drop_path_ratio_list=drop_path_list[2:], D=D)
+        # Resolucion Ul
+        # EarthBLock: 2
+        #              16 / 2 = 8
+        #              8 / 2 = 4
+        self.layer2 = EarthSpecificLayer(depth=depth[1], dim=2*C, input_resolution=(8, 8, 4), heads=n_heads[1], drop_path_ratio_list=drop_path_list[2:], D=D)
+        self.layer3 = EarthSpecificLayer(depth=depth[2], dim=2*C, input_resolution=(8, 8, 4), heads=n_heads[2], drop_path_ratio_list=drop_path_list[2:], D=D)
         #)
-        self.layer4 = EarthSpecificLayer(depth=depth[3], dim=C, input_resolution=(8, 360, 181),
+        # Resolucion UH
+        # kernel conv: 4 x 4 con saltos de 4
+        #              1440 / 4 = 360
+        #              721 / 4 = 181
+        # self.layer4 = EarthSpecificLayer(depth=depth[3], dim=C, input_resolution=(8, 360, 181),
+        #                                 heads=n_heads[3], drop_path_ratio_list=drop_path_list[:2], D=D)
+        # Resolucion UL
+        # kernel conv: 4 x 4 con saltos de 4
+        #              64 / 4 = 16
+        #              32 / 4 = 8
+        self.layer4 = EarthSpecificLayer(depth=depth[3], dim=C, input_resolution=(8, 16, 8),
                                         heads=n_heads[3], drop_path_ratio_list=drop_path_list[:2], D=D)
-
         # Upsample and downsample:
         self.downsample = DownSample(C)
         self.upsample = UpSample(2*C, C)
@@ -172,6 +203,7 @@ class DownSample(nn.Module):
 
         # Merge four tokens into one to halve H and W dimensions:
         # (B, 8, 360, 182, C) -> (B, 8, 180, 91, 4C)
+        print(x.shape)
         x = x.view(B, Z, H//2, 2, W//2, 2, C).permute(0,1,2,4,3,5,6)
         x = x.reshape(B, Z, H//2, W//2, 4*C)
         
@@ -232,8 +264,10 @@ class EarthSpecificLayer(nn.Module):
 class EarthSpecificBlock(nn.Module):
     def __init__(self, dim, input_resolution, heads, drop_path_ratio, D):
         super().__init__()
-        self.window_size = (2, 12, 6)
+        # self.window_size = (2, 12, 6)
+        self.window_size = (1, 2, 1)
         self.input_resolution = input_resolution
+
 
         self.attention = EarthAttention3D(dim, heads, self.window_size, input_resolution, 0)
         self.norm1 = nn.LayerNorm(dim)      # Normalize over last dimension (channels), expects last dimension to be size dim
@@ -277,8 +311,10 @@ class EarthSpecificBlock(nn.Module):
         # (Z, H, W) -> (nW, T)     where T = window_size[0]*window_size[1]*window_size[2]
         nW = (Z//self.window_size[0])*(H//self.window_size[1])*(W//self.window_size[2])
         T = self.window_size[0]*self.window_size[1]*self.window_size[2]
-
+        print("nW=", nW)
+        print(img_mask.shape)
         mask_windows = img_mask.view(Z//self.window_size[0], self.window_size[0], H//self.window_size[1], self.window_size[1], W//self.window_size[2], self.window_size[2])
+        print("mask_windows=", mask_windows.shape)
         mask_windows = mask_windows.permute(0,2,4,1,3,5).contiguous().view(nW, T)
 
         # Calculate pairwise "distances" of mask elements within windows:
