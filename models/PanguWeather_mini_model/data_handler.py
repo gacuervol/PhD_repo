@@ -167,10 +167,14 @@ class WeatherDataset(Dataset):
         """
         air_data = normalize_data(torch.load(air_data_path))
         surface_data = normalize_data(torch.load(surface_data_path).squeeze()).squeeze()
-        self.x_air = air_data[:-lead_time]
-        self.x_surface = surface_data[:-lead_time]
-        self.y_air = air_data[lead_time:]
-        self.y_surface = surface_data[lead_time:]
+        # self.x_air = air_data[:-lead_time]
+        self.x_air = air_data[:-lead_time, :, :64, :32, :]
+        # self.x_surface = surface_data[:-lead_time]
+        self.x_surface = surface_data[:-lead_time, :64, :32, :]
+        # self.y_air = air_data[lead_time:]
+        self.y_air = air_data[lead_time:, :, :64, :32, :]
+        # self.y_surface = surface_data[lead_time:]
+        self.y_surface = surface_data[lead_time:, :64, :32, :]
         self.n_samples = self.x_air.shape[0]
         # Sanity checks:
         assert self.x_air.shape == self.y_air.shape, "air data shape does not match with its labels"
