@@ -126,7 +126,7 @@ GENERATED_FORCING_VARS = (
     "day_progress_sin",
     "day_progress_cos",
 )
-MY_VARS = ("analysed_sst")
+MY_VARS = tuple(["analysed_sst"])
 FORCING_VARS = EXTERNAL_FORCING_VARS + GENERATED_FORCING_VARS
 FORCING_VARS_SST = ()
 STATIC_VARS = (
