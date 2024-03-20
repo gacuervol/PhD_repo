@@ -60,11 +60,12 @@ PRESSURE_LEVELS_HRES_25 = (
 # https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2020MS002203
 PRESSURE_LEVELS_WEATHERBENCH_13 = (
     50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
-
+PRESSURE_LEVELS_SST = (0)
 PRESSURE_LEVELS = {
     13: PRESSURE_LEVELS_WEATHERBENCH_13,
     25: PRESSURE_LEVELS_HRES_25,
     37: PRESSURE_LEVELS_ERA5_37,
+    1: PRESSURE_LEVELS_SST,
 }
 
 # The list of all possible atmospheric variables. Taken from:
@@ -125,12 +126,14 @@ GENERATED_FORCING_VARS = (
     "day_progress_sin",
     "day_progress_cos",
 )
+MY_VARS = ("analysed_sst")
 FORCING_VARS = EXTERNAL_FORCING_VARS + GENERATED_FORCING_VARS
+FORCING_VARS_SST = ()
 STATIC_VARS = (
     "geopotential_at_surface",
     "land_sea_mask",
 )
-
+STATIC_VARS_SST = ()
 
 @chex.dataclass(frozen=True, eq=True)
 class TaskConfig:
@@ -169,7 +172,13 @@ TASK_13_PRECIP_OUT = TaskConfig(
     pressure_levels=PRESSURE_LEVELS_WEATHERBENCH_13,
     input_duration="12h",
 )
-
+TASK_SST = TaskConfig(
+    input_variables= MY_VARS + FORCING_VARS_SST,
+    target_variables="analysed_sst",
+    forcing_variables=FORCING_VARS_SST,
+    pressure_levels=PRESSURE_LEVELS_SST,
+    input_duration="12h",
+)
 
 @chex.dataclass(frozen=True, eq=True)
 class ModelConfig:
