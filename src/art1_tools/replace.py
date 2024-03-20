@@ -35,7 +35,10 @@ def replace_norm_matrices(norm_matrices: xr.Dataset,
             norm_matrices[closest_match].data = norm  # Replace entire data with the new value
         elif var_dim == 5:  # If variable has 5 dimensions
             SST_norm_broadcast_n = [norm] * n  # Create a list of 'norm' values matching the 5th dimension size
-            norm_matrices[closest_match].data = SST_norm_broadcast_n  # Broadcast the new value to match 5th dimension
+            try:
+                norm_matrices[closest_match].data = SST_norm_broadcast_n  # Broadcast the new value to match 5th dimension
+            except ValueError:
+                norm_matrices[closest_match].data = SST_norm_broadcast_n[0]
         else:
             pass  # Do nothing if the dimensionality doesn't match expected cases
 
