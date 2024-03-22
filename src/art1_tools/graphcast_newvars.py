@@ -32,7 +32,7 @@ from graphcast import deep_typed_graph_net
 from graphcast import grid_mesh_connectivity
 from graphcast import icosahedral_mesh
 from graphcast import losses
-from graphcast import model_utils
+from . import model_utils_newvars
 from graphcast import predictor_base
 from graphcast import typed_graph
 from graphcast import xarray_jax
@@ -60,7 +60,7 @@ PRESSURE_LEVELS_HRES_25 = (
 # https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2020MS002203
 PRESSURE_LEVELS_WEATHERBENCH_13 = (
     50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
-PRESSURE_LEVELS_SST = (0)
+PRESSURE_LEVELS_SST = tuple([0])
 PRESSURE_LEVELS = {
     13: PRESSURE_LEVELS_WEATHERBENCH_13,
     25: PRESSURE_LEVELS_HRES_25,
@@ -128,7 +128,7 @@ GENERATED_FORCING_VARS = (
 )
 MY_VARS = tuple(["analysed_sst"])
 FORCING_VARS = EXTERNAL_FORCING_VARS + GENERATED_FORCING_VARS
-FORCING_VARS_SST = ()
+# FORCING_VARS_SST = ()
 STATIC_VARS = (
     "geopotential_at_surface",
     "land_sea_mask",
@@ -173,9 +173,9 @@ TASK_13_PRECIP_OUT = TaskConfig(
     input_duration="12h",
 )
 TASK_SST = TaskConfig(
-    input_variables= MY_VARS + FORCING_VARS_SST,
-    target_variables="analysed_sst",
-    forcing_variables=FORCING_VARS_SST,
+    input_variables=MY_VARS + FORCING_VARS,
+    target_variables=MY_VARS,
+    forcing_variables=FORCING_VARS,
     pressure_levels=PRESSURE_LEVELS_SST,
     input_duration="12h",
 )
@@ -219,6 +219,18 @@ class CheckPoint:
   license: str
 
 
+def mokey1():
+  return var1, var2
+def mokey2():
+  return var3, var4
+def mokey3():
+  return var5#, var6
+def mokey4():
+  return var6, var7
+def mokey5():
+  return var8
+def mokey6():
+  return var9
 class GraphCast(predictor_base.Predictor):
   """GraphCast Predictor.
 
@@ -305,9 +317,12 @@ class GraphCast(predictor_base.Predictor):
         set(task_config.target_variables) - set(ALL_ATMOSPHERIC_VARS))
     num_atmospheric_vars = len(
         set(task_config.target_variables) & set(ALL_ATMOSPHERIC_VARS))
+    global var6
+    var6 = (num_surface_vars, task_config, num_atmospheric_vars)
     num_outputs = (num_surface_vars +
                    len(task_config.pressure_levels) * num_atmospheric_vars)
-
+    global var7 
+    var7 = num_outputs
     # Decoder, which moves data from the mesh back into the grid with a single
     # message passing step.
     self._mesh2grid_gnn = deep_typed_graph_net.DeepTypedGraphNet(
@@ -384,12 +399,14 @@ class GraphCast(predictor_base.Predictor):
     # Run message passing in the multimesh.
     # [num_mesh_nodes, batch, latent_size]
     updated_latent_mesh_nodes = self._run_mesh_gnn(latent_mesh_nodes)
-
     # Transfer data frome the mesh to the grid.
     # [num_grid_nodes, batch, output_size]
+    global var3
+    var3 = (updated_latent_mesh_nodes, latent_grid_nodes)
     output_grid_nodes = self._run_mesh2grid_gnn(
         updated_latent_mesh_nodes, latent_grid_nodes)
-
+    global var4
+    var4 = output_grid_nodes
     # Conver output flat vectors for the grid nodes to the format of the output.
     # [num_grid_nodes, batch, output_size] ->
     # xarray (batch, one time step, lat, lon, level, multiple vars)
@@ -449,16 +466,18 @@ class GraphCast(predictor_base.Predictor):
   def _init_mesh_properties(self):
     """Inits static properties that have to do with mesh nodes."""
     self._num_mesh_nodes = self._finest_mesh.vertices.shape[0]
-    mesh_phi, mesh_theta = model_utils.cartesian_to_spherical(
+    mesh_phi, mesh_theta = model_utils_newvars.cartesian_to_spherical(
         self._finest_mesh.vertices[:, 0],
         self._finest_mesh.vertices[:, 1],
         self._finest_mesh.vertices[:, 2])
     (
         mesh_nodes_lat,
         mesh_nodes_lon,
-    ) = model_utils.spherical_to_lat_lon(
+    ) = model_utils_newvars.spherical_to_lat_lon(
         phi=mesh_phi, theta=mesh_theta)
     # Convert to f32 to ensure the lat/lon features aren't in f64.
+    global var5
+    var5 = (mesh_nodes_lat, mesh_nodes_lon)
     self._mesh_nodes_lat = mesh_nodes_lat.astype(np.float32)
     self._mesh_nodes_lon = mesh_nodes_lon.astype(np.float32)
 
@@ -479,11 +498,15 @@ class GraphCast(predictor_base.Predictor):
 
     # Create some edges according to distance between mesh and grid nodes.
     assert self._grid_lat is not None and self._grid_lon is not None
+    global var1 
+    var1 = (self._grid_lat, self._grid_lon, self._finest_mesh, self._query_radius)
     (grid_indices, mesh_indices) = grid_mesh_connectivity.radius_query_indices(
         grid_latitude=self._grid_lat,
         grid_longitude=self._grid_lon,
         mesh=self._finest_mesh,
         radius=self._query_radius)
+    global var2
+    var2 = (grid_indices, mesh_indices)
 
     # Edges sending info from grid to mesh.
     senders = grid_indices
@@ -493,7 +516,7 @@ class GraphCast(predictor_base.Predictor):
     # Structural features are those that depend on the fixed values of the
     # latitude and longitudes of the nodes.
     (senders_node_features, receivers_node_features,
-     edge_features) = model_utils.get_bipartite_graph_spatial_features(
+     edge_features) = model_utils_newvars.get_bipartite_graph_spatial_features(
          senders_node_lat=self._grid_nodes_lat,
          senders_node_lon=self._grid_nodes_lon,
          receivers_node_lat=self._mesh_nodes_lat,
@@ -537,7 +560,7 @@ class GraphCast(predictor_base.Predictor):
     # Structural features are those that depend on the fixed values of the
     # latitude and longitudes of the nodes.
     assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
-    node_features, edge_features = model_utils.get_graph_spatial_features(
+    node_features, edge_features = model_utils_newvars.get_graph_spatial_features(
         node_lat=self._mesh_nodes_lat,
         node_lon=self._mesh_nodes_lon,
         senders=senders,
@@ -583,7 +606,7 @@ class GraphCast(predictor_base.Predictor):
     # Precompute structural node and edge features according to config options.
     assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
     (senders_node_features, receivers_node_features,
-     edge_features) = model_utils.get_bipartite_graph_spatial_features(
+     edge_features) = model_utils_newvars.get_bipartite_graph_spatial_features(
          senders_node_lat=self._mesh_nodes_lat,
          senders_node_lon=self._mesh_nodes_lon,
          receivers_node_lat=self._grid_nodes_lat,
@@ -721,6 +744,8 @@ class GraphCast(predictor_base.Predictor):
     batch_size = updated_latent_mesh_nodes.shape[1]
 
     mesh2grid_graph = self._mesh2grid_graph_structure
+    global var9
+    var9 = mesh2grid_graph
     assert mesh2grid_graph is not None
     mesh_nodes = mesh2grid_graph.nodes["mesh_nodes"]
     grid_nodes = mesh2grid_graph.nodes["grid_nodes"]
@@ -742,6 +767,8 @@ class GraphCast(predictor_base.Predictor):
 
     # Run the GNN.
     output_graph = self._mesh2grid_gnn(input_graph)
+    global var8
+    var8 = output_graph
     output_grid_nodes = output_graph.nodes["grid_nodes"].features
 
     return output_grid_nodes
@@ -755,14 +782,14 @@ class GraphCast(predictor_base.Predictor):
 
     # xarray `Dataset` (batch, time, lat, lon, level, multiple vars)
     # to xarray `DataArray` (batch, lat, lon, channels)
-    stacked_inputs = model_utils.dataset_to_stacked(inputs)
-    stacked_forcings = model_utils.dataset_to_stacked(forcings)
+    stacked_inputs = model_utils_newvars.dataset_to_stacked(inputs)
+    stacked_forcings = model_utils_newvars.dataset_to_stacked(forcings)
     stacked_inputs = xarray.concat(
         [stacked_inputs, stacked_forcings], dim="channels")
 
     # xarray `DataArray` (batch, lat, lon, channels)
     # to single numpy array with shape [lat_lon_node, batch, channels]
-    grid_xarray_lat_lon_leading = model_utils.lat_lon_to_leading_axes(
+    grid_xarray_lat_lon_leading = model_utils_newvars.lat_lon_to_leading_axes(
         stacked_inputs)
     return xarray_jax.unwrap(grid_xarray_lat_lon_leading.data).reshape(
         (-1,) + grid_xarray_lat_lon_leading.data.shape[2:])
@@ -784,11 +811,12 @@ class GraphCast(predictor_base.Predictor):
     grid_xarray_lat_lon_leading = xarray_jax.DataArray(
         data=grid_outputs_lat_lon_leading,
         dims=dims)
-    grid_xarray = model_utils.restore_leading_axes(grid_xarray_lat_lon_leading)
+    grid_xarray = model_utils_newvars.restore_leading_axes(grid_xarray_lat_lon_leading)
 
     # xarray `DataArray` (batch, lat, lon, channels)
     # to xarray `Dataset` (batch, one time step, lat, lon, level, multiple vars)
-    return model_utils.stacked_to_dataset(
+
+    return model_utils_newvars.stacked_to_dataset(
         grid_xarray.variable, targets_template)
 
 

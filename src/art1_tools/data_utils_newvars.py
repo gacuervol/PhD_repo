@@ -20,6 +20,9 @@ import numpy as np
 import pandas as pd
 import xarray
 
+def mokey1():
+  return var1
+
 TimedeltaLike = Any  # Something convertible to pd.Timedelta.
 TimedeltaStr = str  # A string convertible to pd.Timedelta.
 
@@ -355,6 +358,8 @@ def extract_inputs_targets_forcings(
   inputs = inputs[list(input_variables)]
   # The forcing uses the same time coordinates as the target.
   forcings = targets[list(forcing_variables)]
-  targets = targets[list([target_variables])]
+  global var1
+  var1 = (targets, target_variables)
+  targets = targets[list(target_variables)]
 
   return inputs, targets, forcings
