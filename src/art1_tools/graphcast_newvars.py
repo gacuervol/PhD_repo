@@ -31,7 +31,7 @@ import chex
 from graphcast import deep_typed_graph_net
 from graphcast import grid_mesh_connectivity
 from graphcast import icosahedral_mesh
-from graphcast import losses
+from . import losses_newvars
 from . import model_utils_newvars
 from graphcast import predictor_base
 from graphcast import typed_graph
@@ -133,7 +133,7 @@ STATIC_VARS = (
     "geopotential_at_surface",
     "land_sea_mask",
 )
-STATIC_VARS_SST = ()
+STATIC_VARS_SST = ("land_sea_mask",)
 
 @chex.dataclass(frozen=True, eq=True)
 class TaskConfig:
@@ -173,7 +173,7 @@ TASK_13_PRECIP_OUT = TaskConfig(
     input_duration="12h",
 )
 TASK_SST = TaskConfig(
-    input_variables=MY_VARS + FORCING_VARS,
+    input_variables=MY_VARS + FORCING_VARS + STATIC_VARS_SST,
     target_variables=MY_VARS,
     forcing_variables=FORCING_VARS,
     pressure_levels=PRESSURE_LEVELS_SST,
@@ -423,7 +423,7 @@ class GraphCast(predictor_base.Predictor):
     predictions = self(
         inputs, targets_template=targets, forcings=forcings, is_training=True)
     # Compute loss.
-    loss = losses.weighted_mse_per_level(
+    loss = losses_newvars.weighted_mse_per_level(
         predictions, targets,
         per_variable_weights={
             # Any variables not specified here are weighted as 1.0.
@@ -431,13 +431,14 @@ class GraphCast(predictor_base.Predictor):
             # and also one which we have struggled to get good performance
             # on at short lead times, so leaving it weighted at 1.0, equal
             # to the multi-level variables:
-            "2m_temperature": 1.0,
+            # "2m_temperature": 1.0,
             # New single-level variables, which we don't weight too highly
             # to avoid hurting performance on other variables.
-            "10m_u_component_of_wind": 0.1,
-            "10m_v_component_of_wind": 0.1,
-            "mean_sea_level_pressure": 0.1,
-            "total_precipitation_6hr": 0.1,
+            # "10m_u_component_of_wind": 0.1,
+            # "10m_v_component_of_wind": 0.1,
+            # "mean_sea_level_pressure": 0.1,
+            # "total_precipitation_6hr": 0.1,
+            "analysed_sst": 1.0,
         })
     print(loss)
     return loss, predictions  # pytype: disable=bad-return-type  # jax-ndarray
